@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="utf-8">
+    <title>Jack contre les fantômes</title>
+    <style type="text/css">
+        /* Importation du Google Font: VT323 */
+        @import url('https://fonts.googleapis.com/css2?family=VT323&display=swap');
+
+        canvas {
+            border: 2px solid black;
+            margin: auto; /* Centrer le canvas en X et Y */
+            display: block; /* Centrer le canvas en X et Y */
+        }
+
+        h1 {
+            font-family: Arial, Helvetica, sans-serif;
+            text-align: center; /* Centrer le texte en X */
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Jack contre les fantômes</h1>
+    <canvas width="960" height="640"> </canvas>
+
+    <script>
+        //Date: 20 décembre 2021
+        //Nom: Christophe Leam-Touch
+        //Description décrivant le fonctionnement du jeu
+        //On déplace Jack le chat avec les touches fléchées HAUT et BAS afin de récolter 25 étoiles tout en évitant une attaque de fantômes
+
+        //Récupérer le canvas
+        let leCanvas = document.querySelector("canvas");
+        let ctx = leCanvas.getContext("2d");
+
+        //Un chat animé
+        let chat = {
+            img: new Image(),
+            urlImage: "images/chat.png",
+            x: leCanvas.width * 0.05, //Position initiale sur l'axe des X
+            y: leCanvas.height * 0.3, //Position initiale sur l'axe des Y
+            largeur: 243/3, //Largeur d'une vignette
+            hauteur: 74, //Hauteur d'une vignette
+            nbVignettes: 3, //Nombre de vignettes
+            indexVignette: 0, //Index de la première vignette
+            sourceX: 0, //Coordonnée X de la source de chaque vignette
+            vitesseY: 6 //Vitesse sur l'axe des Y
+        }
+
+        //Charger l'image du chat animé
+        chat.img.src = chat.urlImage;
+
+        //Création d'une table vide pour les étoiles
+        let lesEtoiles = [];
+
+        //Création d'une table vide pour les fantômes
+        let lesFantomes = [];
+
+        //Background du canvas
+        let paysage = {
+            img: new Image(),
+            urlImage: "images/nuages.png",
+            largeur: leCanvas.width, //Largeur du paysage
+            vitesseX: 2, //Vitesse sur l'axe des X
+            decalageX: 0 //Décalage sur l'axe des Y
+        }
+
+        //Charger le background
+        paysage.img.src = paysage.urlImage;
+
+        //Objet pour gérer les touches fléchées du clavier
+        let fleches = {
+            haut: false,
+            bas: false
+        }
+
+        //Variable pour vérifier si le jeu est commencé
+        let demarrerJeu = false;
+
+        //Variable pour vérifier si le jeu est terminé
+        let finJeu = false;
+
+        //Variable pour enregistrer le score du joueur
+        let score = 0;
+
+        //Variables des sons du jeu
+        let sonMenu = new Audio("sons/menu.mp3");
+        let sonJeu = new Audio("sons/sonJeu.mp3");
+        let sonEtoile = new Audio("sons/sonEtoile.mp3");
+        let sonFantome = new Audio("sons/sonFantome.mp3");
+        let joueSonMenu = false;
+
+        //Chargement des images du menu
+        let imageDebutJeu = new Image();
+        imageDebutJeu.src = "images/fondNoir.png"
+        let imageBarreEspace = new Image();
+        imageBarreEspace.src = "images/espace.png"
+
+        //Chargement de l'image si le chat gagne
+        let imageGagne = new Image();
+        imageGagne.src = "images/fondVert.png"
+
+        //Chargement de l'image si le chat perd
+        let imagePerd = new Image();
+        imagePerd.src = "images/fondRouge.png"
+
+        /////////////////////////////////////////////////////
+
+        //Actualisation du jeu à une cadence de 60 ips
+        let intervalJeuID = setInterval(actualiserLeJeu, 1000 / 60);
+
+        //Changement des images des animations selon une cadence de 4 ips
+        setInterval(changerImage, 1000 / 4);
+
+
+        //Écouteur sur le document pour détecter si des touches de clavier sont appuyées ou relâchées
+        document.addEventListener("keydown", demarrage);
+        document.addEventListener("keydown", jouerArreterMusiqueMenu);
+
+        //////////////  LES FONCTIONS //////////////////////
+
+        //Fonction pour le menu de début de jeu
+        function demarrage() {
+            //Quand la touche ESPACE est appuyée, on peut bouger le chat
+            if (event.keyCode == 32){
+                document.addEventListener("keydown", presserTouche);
+                document.addEventListener("keyup", relacherTouche);
+
+                //On arrête l'écouteur pour ne pas réactiver la fonction demarrage()
+                document.removeEventListener("keydown", demarrage);
+
+                //On débute le jeu
+                demarrerJeu = true;
+
+                //Appel de la fonction pour généré des étoiles et des fantômes à une cadence de 1 ips lorsque le jeu est commencé
+                setInterval(genereEtoile, 1000);
+                setInterval(genereFantome, 1000);
+            }
+        }
+
+        //Fonction pour jouer le son du menu de début de jeu
+        function jouerArreterMusiqueMenu(event) {
+            //Si la touche M du clavier est appuyé...
+            if (event.keyCode == 77) { //Touche M
+
+                //Si la musique est entrain de jouer on l'arrête
+                if (joueSonMenu){
+                    joueSonMenu = false;
+                }
+                //Si la musique ne joue pas, on la joue
+                else {
+                    joueSonMenu = true;
+                }
+            }
+        }
+
+        //Fonction pour actualiser l'affichage du jeu     
+        function actualiserLeJeu() {
+            //Effacer le canvas
+            ctx.clearRect(0, 0, leCanvas.width, leCanvas.height);
+
+            //Tant que joueSonMenu est vrai ET que le jeu n'est pas démarré, on joue la musique du menu en boucle et on arrête la musique du gameplay de jeu
+            if (joueSonMenu && !demarrerJeu){
+                sonMenu.loop = true;
+                sonMenu.play();
+                sonJeu.pause();
+            }
+
+            //Sinon si, tant que joueSonMenu est vrai ET que le jeu a démarré, on joue la musique de gameplay du jeu en boucle et on arrête la musique du menu
+            else if (joueSonMenu && demarrerJeu) {
+                sonJeu.loop = true;
+                sonJeu.play();
+                sonMenu.pause();
+            }
+
+            //Sinon, on arrête la musique des deux instances
+            else {
+                sonMenu.pause();
+                sonJeu.pause();
+            }
+
+            //Tant que le jeu n'est pas commencé, on affiche le menu de départ et on permet au son du menu de jouer avec un click de la souris
+            if (!demarrerJeu){
+                //Défiler le paysage
+                defilerLePaysage();
+
+                //Déplacer le chat
+                deplacerLeChat();
+
+                //Affiche les instructions
+                instructions();
+            }
+            
+            //Lorsque le jeu commence, on enlève les instructions de l'écran et le son du menu
+            else {
+                //Défiler le paysage
+                defilerLePaysage();
+
+                //Déplacer le chat
+                deplacerLeChat();
+
+                //Deplacement de l'étoile
+                deplacementEtoile();
+
+                //Deplacement d'un fantome
+                deplacementFantome();
+
+                //Afficher le score
+                afficherScore();
+
+                //Le chat a gagné alors le jeu est terminé et...
+                if (score == 25){
+                    //On mémorise la fin du jeu
+                    finJeu = true;
+                    //On arrête la minuterie en cours
+                    clearInterval(intervalJeuID);
+                    //On affiche l'image de fin de jeu lorsque le chat a gagné
+                    ctx.drawImage(imageGagne, 0, 0);
+                }
+
+                //Le chat a perdu alors le jeu est terminé et...
+                else if (finJeu == true){
+                    //On arrête la minuterie en cours
+                    clearInterval(intervalJeuID);
+                    //On affiche l'image de fin de jeu lorsque le chat a perdu
+                    ctx.drawImage(imagePerd, 0, 0);
+                }
+
+                //On retire du canvas les sprites qui ont dépassé le chat
+                enleverSprite();
+            }
+        }
+
+        //Fonction pour afficher les instructions du jeu pour le menu
+        function instructions() {
+            //On affiche l'image de fond du début du jeu pour le menu
+            ctx.drawImage(imageDebutJeu, 0, 0);
+
+            //On affiche les instructions au joueur en début de jeu
+            ctx.font="25pt VT323";
+            ctx.textAlign="center";
+            ctx.textBaseline="middle";
+            ctx.fillStyle="white";
+            ctx.fillText("Comment jouer ?", leCanvas.width / 2, leCanvas.height / 4);
+            ctx.font="20pt VT323";
+            ctx.fillText("À l'aide des touches fléchées HAUT et BAS du clavier, déplacez", leCanvas.width / 2, leCanvas.height / 4 + 30);
+            ctx.fillText("Jack le chat pour ramasser 25 étoiles en évitant les fantômes!", leCanvas.width / 2, leCanvas.height / 4 + 50);
+            ctx.fillText("Appuyez sur la touche M du clavier pour activer/désactiver la musique!", leCanvas.width / 2, leCanvas.height / 2);
+            ctx.fillText("Appuyez sur la touche ESPACE du clavier pour commencer le jeu!", leCanvas.width / 2, leCanvas.height / 2 + 20);
+            ctx.drawImage(imageBarreEspace, leCanvas.width / 2 - imageBarreEspace.width / 2, leCanvas.height/2 + imageBarreEspace.height);
+        }
+
+        //Fonction pour déplacer le chat
+        function deplacerLeChat() {
+            //On déplace le chat selon la touche active
+            if (fleches.haut) {
+                chat.y -= chat.vitesseY;
+            }
+            if (fleches.bas) {
+                chat.y += chat.vitesseY;
+            }
+
+            //S'assurer que le chat ne sort pas des limites du canvas
+            //Limite haut
+            if (chat.y < 0) {
+                chat.y = 0;
+            }
+
+            //Limite bas
+            let yMax = leCanvas.height - chat.hauteur;
+            if (chat.y > yMax) {
+                chat.y = yMax;
+            }
+
+            //Dessiner le chat
+            ctx.drawImage(chat.img, chat.sourceX, 0, chat.largeur, chat.hauteur, chat.x, chat.y, chat.largeur, chat.hauteur);
+        }
+
+        //Fonction pour le déplacement de chaque étoile et détection de collision entre le chat et une étoile
+        function deplacementEtoile() {
+            for (let uneEtoile of lesEtoiles) {
+                //Déplacement d'une étoile uniquement vers la gauche
+                uneEtoile.x -= uneEtoile.vitesseX;
+
+                //Tant que la position en X de l'étoile est plus grande que la limite gauche du canvas - la largeur de l'étoile, on dessine l'étoile
+                if (uneEtoile.x > 0 - uneEtoile.largeur){
+                    //Dessiner l'étoile
+                    ctx.drawImage(uneEtoile.img, uneEtoile.x, uneEtoile.y);
+
+                    //Détection de collision entre le chat et l'étoile
+                    let siCollisionChatEtoile = detecterCollisionEntreRectangles(chat, uneEtoile);
+                    //S'il y a collision entre le chat et une étoile...
+                    if (siCollisionChatEtoile) {
+                        //On augmente le score de 1
+                        score ++;
+                        //On joue le son de collision entre le chat et une étoile
+                        sonEtoile.play();
+                        //Marque une étoile pour être retiré lorsqu'il y a collision
+                        uneEtoile.sortiCanvasEtoile = true;
+                    }
+                }
+
+                //Retire les étoiles en dehors de la portée du chat. C'est à dire tout à gauche du chat.
+                else {
+                    uneEtoile.sortiCanvasEtoile = true;
+                }
+            }
+        }
+
+        //Fonction pour générer des étoiles
+        function genereEtoile() {
+            uneEtoile = {
+                img: new Image(),
+                urlImage: "images/etoile.png",
+                x: leCanvas.width + 62, //Position initiale sur l'axe des X.
+                y: entierHasard(0, leCanvas.height - 62), //Position initiale au hasard sur l'axe des Y.
+                largeur: 62, //Largeur d'une étoile
+                hauteur: 62, //Hauteur d'une étoile
+                vitesseX: entierHasard(5, 15), //Vitesse au hasard sur l'axe des X
+                sortiCanvasEtoile: false //Signale si une étoile est en dehors du canvas
+            }
+
+            //Charger l'image d'une étoile
+            uneEtoile.img.src = uneEtoile.urlImage;
+
+            //Ajoute une étoile à la fin de la table lesEtoiles
+            lesEtoiles.push(uneEtoile);
+        }
+
+        //Fonction pour le déplacement de chaque fantome et détection de collision entre le chat et un fantome
+        function deplacementFantome() {
+            for(let unFantome of lesFantomes){
+                //Déplacement d'un fantôme uniquement vers la gauche
+                unFantome.x -= unFantome.vitesseX;
+
+                //Tant que la position en X du fantome est plus grand que la limite gauche du canvas - la largeur du fantome, on dessine le fantome
+                if (unFantome.x > 0 - unFantome.largeur){
+                    //Dessiner chaque fantome
+                    ctx.drawImage(unFantome.img, unFantome.sourceX, 0, unFantome.largeur, unFantome.hauteur, unFantome.x, unFantome.y, unFantome.largeur, unFantome.hauteur);
+
+                    //Détection de collision entre le chat et un fantome
+                    let siCollisionChatFantome = detecterCollisionEntreRectangles(chat, unFantome);
+                    //S'il y a collision entre le chat et une fantome...
+                    if (siCollisionChatFantome) {
+                        //on joue le son de collision entre le chat et fantome
+                        sonFantome.play();
+                        //On mémorise la fin du jeu
+                        finJeu = true;
+                    }
+                }
+
+                //Retire les fantômes en dehors de la portée du chat. C'est à dire tout à gauche du chat.
+                else {
+                    unFantome.sortiCanvasFantome = true;
+                }
+            }
+        }
+
+        //Fonction pour générer des fantômes
+        function genereFantome() {
+            unFantome = {
+                img: new Image(),
+                urlImage: "images/fantome.png",
+                x: leCanvas.width + 435/3, //Position initiale sur l'axe des X.
+                y: entierHasard(0, leCanvas.height - 66), //Position initiale au hasard sur l'axe des Y.
+                largeur: 435/3, //Largeur d'un fantome
+                hauteur: 66, //Hauteur d'un fantome
+                nbVignettes: 3, //Nombre de vignettes
+                indexVignette: 0, //Index de la première vignette
+                sourceX: 0, //Coordonnée X de la source de chaque vignette
+                vitesseX: entierHasard(3, 13), //Vitesse au hasard sur l'axe des X
+                sortiCanvasFantome: false //Signale si un fantôme est en dehors du canvas
+            }
+
+            //Charger l'image d'un fantome
+            unFantome.img.src = unFantome.urlImage;
+
+            //Ajoute un fantôme à la fin de la table lesFantomes
+            lesFantomes.push(unFantome);
+        }
+
+        //Fonction pour appeler le changement des images des animations selon une cadence donnée
+        function changerImage() {
+            //Appeler la fonction gererImageObjetsAnimes pour chaque fantome avec une boucle for...of
+            for(let unFantome of lesFantomes){
+                gererImageObjetsAnimes(unFantome);
+            }
+
+            //Appeler la fonction gererImageObjetsAnimes pour le chat
+            gererImageObjetsAnimes(chat);
+        }
+
+        //Fonction pour enlever les sprites des etoiles et des fantomes hors de la porté du chat, c'est à dire tout à gauche du canvas
+        function enleverSprite() {
+            for(let uneEtoile of lesEtoiles){
+                //Si une étoile est sortie du canvas...
+                if (uneEtoile.sortiCanvasEtoile) {
+                    //Retourne l'index/la position d'une étoile dans le tableau lesEtoiles
+                    let indexEtoile = lesEtoiles.indexOf(uneEtoile);
+                    //Retire une étoile à l'index spécifié dans le tableau lesEtoiles
+                    lesEtoiles.splice(indexEtoile, 1);
+                }
+            }
+
+            for(let unFantome of lesFantomes){
+                //Si une étoile est sortie du canvas...
+                if (unFantome.sortiCanvasFantome) {
+                    //Retourne l'index/la position d'une étoile dans le tableau lesEtoiles
+                    let indexFantome = lesFantomes.indexOf(unFantome);
+                    //Retire une étoile à l'index spécifié dans le tableau lesEtoiles
+                    lesFantomes.splice(indexFantome, 1);
+                }
+            }
+        }
+
+        //Fonction pour gérer les vignettes à afficher pour le chat et le fantome
+        function gererImageObjetsAnimes(objetAnim) {
+
+            //Définir la coordonnée sourceX de la vignette à afficher
+            objetAnim.sourceX = objetAnim.indexVignette * objetAnim.largeur;
+
+            //Incrémenter et gérer l’index de la prochaine vignette à afficher
+            objetAnim.indexVignette++;
+
+            if (objetAnim.indexVignette == objetAnim.nbVignettes) {
+                objetAnim.indexVignette = 0;
+            }
+        }
+
+        //Fonction pour faire défiler le paysage
+        function defilerLePaysage() {
+            //Augmenter la valeur du décalage selon la vitesse
+            paysage.decalageX += paysage.vitesseX;
+
+            // Si le décalage est plus grand que la largeur de l'image, on remet la valeur à 0
+            // Note: la largeur de l'image du paysage doit être égale à celle du canvas
+            if (paysage.decalageX >= paysage.largeur) {
+               paysage.decalageX = 0;
+            }
+
+            /* On dessine deux images du MÊME paysage avec une valeur de décalage différente
+            Les deux images du paysage se déplacent vers la gauche         
+            La première image se déplace de 0 à moins la valeur maximale du décalage correspond à la largeur de l'image
+            La deuxième image se déplace de la limite droite du canvas à 0 */
+            ctx.drawImage(paysage.img, 0 - paysage.decalageX, 0);
+            ctx.drawImage(paysage.img, leCanvas.width - paysage.decalageX, 0);
+        }
+
+        //Affiche le score du joueur
+        function afficherScore() {
+            //Style du texte
+            ctx.font = "bold 128px Calibri";
+            ctx.fillStyle = "white";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "top";
+            
+            //Dessiner le texte
+            ctx.fillText("" + score, leCanvas.width * 0.75, 0);
+        }
+
+        //Fonction pour gérer si une touche fléchée est appuyée
+        function presserTouche(event) {
+            //Empêcher le comportement par défaut du navigateur avec les touches fléchées
+            event.preventDefault();
+
+            //Enregistrer si une touche haut/bas est pressée
+            if (event.keyCode == 38) { //flèche haut
+                fleches.haut = true;
+            }
+
+            if (event.keyCode == 40) { //flèche bas
+                fleches.bas = true;
+            }
+        }
+
+        //Fonction pour gérer si une touche fléchée est relâchée
+        function relacherTouche(event) {
+            //Empêcher le comportement par défaut du navigateur avec les touches fléchées
+            event.preventDefault();
+
+            //Enregistrer si une touche haut/bas est relâchée
+            if (event.keyCode == 38) { //flèche haut
+                fleches.haut = false;
+            }
+
+            if (event.keyCode == 40) { //flèche bas
+                fleches.bas = false;
+            }
+
+            //Si le jeu est fini et que la touche R est relâchée
+            //On repart le jeu
+            if (event.keyCode == 82 && finJeu == true) {
+                //Recharger (actualiser) la page HTML
+                document.location.reload();
+            }
+        }
+
+        //Fonction pour calculer un nombre entier au hasard entre 2 valeurs
+        function entierHasard(nbMin, nbMax) {
+            let intervalle = nbMax - nbMin;
+            return nbMin + Math.round((Math.random() * intervalle));
+        }
+
+        //Détecte si le chat touche l'étoile
+        //Fonction pour détecter la collision entre 2 rectangles
+        function detecterCollisionEntreRectangles(rectangle1, rectangle2) {
+            if (rectangle1.x < rectangle2.x + rectangle2.largeur &&
+                rectangle1.x + rectangle1.largeur > rectangle2.x &&
+                rectangle1.y < rectangle2.y + rectangle2.hauteur &&
+                rectangle1.y + rectangle1.hauteur > rectangle2.y) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    </script>
+
+</body>
+
+</html>
